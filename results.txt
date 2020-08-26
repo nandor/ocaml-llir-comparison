@@ -1,0 +1,299 @@
+INSTRUCTION                                OCAML    LLIR
+
+cmp IMM,REG_8                                  0      28
+cmp IMM,REG_32                                 0       1
+cmp REG_64,IMM(REG_64)                         0     267
+cmp REG_64,IMM(REG_64,REG_64,IMM)              0       3
+cmp REG_64,(REG_64)                            0     307
+cmp (REG_64),REG_64                            0      90
+cmp IMM(REG_64,REG_64,IMM),REG_64              0       1
+cmp IMM(REG_64),REG_64                         0     357
+cmpq IMM,IMM(REG_64,REG_64,IMM)                0      11
+cmpq IMM,(REG_64)                              0     780
+cmpq IMM,IMM(REG_64)                           1    1681
+cmpb IMM,IMM(REG_64)                           0    1467
+cmp REG_64,REG_64                           3391    2219
+cmp IMM,REG_64                             12812    8944
+
+  LLVM can better fold constants and addresses into the operands of cmp
+
+test REG_8,REG_8                               0       7
+testb IMM,(REG_64)                             0      36
+testb IMM,IMM(REG_64)                          0      25
+test IMM,REG_64                               92     113
+test REG_64,REG_64                           942     762
+test IMM,REG_8                              1647    1565
+
+  LLVM can fold addresses into tests.
+
+jmpq IMM(REG_64,REG_64,IMM)                    0      18
+jmpq (REG_64,REG_64,IMM)                       0     792
+jmpq REG_64                                 1274     292
+
+  LLVM can fold jump table address calculations into jmpq.
+
+retq                                       11179    8869
+
+  Both LLIR-OPT and LLVM at the MachineIR level can de-duplicate blocks.
+  This is an effective transformation since OCaml functions often terminate in:
+
+    mov $IMM, %rax
+    retq
+
+callq (REG_64)                                 0    1162
+callq REG_64                                1162       0
+
+  LLVM can fold memory loads into indirect jumps, eliminating a separate load.
+
+mov IMM,REG_32                                 0   16213
+mov IMM,REG_64                             55095     242
+xor REG_32,REG_32                              0     335
+xor REG_64,REG_64                           1856       7
+
+  LLVM encodes small constants better (already fixed in OCaml).
+
+mov REG_32,REG_32                              0      32
+
+  LLIR+LLVM can use 32-bit regs in a few cases.
+
+mov IMM(REG_64,REG_64,IMM),REG_32              0       1
+mov REG_64,REG_32                              0       1
+mov IMM,REG_8                                  0       1
+mov IMM(REG_64),REG_32                         0       8
+mov REG_64,(REG_64,REG_64,IMM)                 0       2
+mov IMM(REG_64),REG_8                          0       1
+mov REG_8,REG_8                                0       2
+mov REG_8,IMM(REG_64)                          5       6
+mov REG_8,(REG_64)                             8       7
+mov (REG_64,REG_64,IMM),REG_64                10      10
+movq IMM,IMM(REG_64,REG_64,IMM)               13      10
+mov REG_64,IMM(REG_64,REG_64,IMM)             19      16
+mov REG_8,(REG_64,REG_64,IMM)                 99      68
+mov IMM(REG_64,REG_64,IMM),REG_64            768     739
+mov REG_64,REG_64                          29270   29521
+mov REG_32,(REG_64)                         1744       0
+mov REG_64,(REG_64)                        28953   14781
+movq IMM,(REG_64)                           1420     967
+mov (REG_64),REG_64                        37828   24033
+mov REG_64,IMM(REG_64)                     46887   63465
+mov IMM(REG_64),REG_64                     68913   75893
+movq IMM,IMM(REG_64)                       25075   24642
+movzbl REG_8,REG_32                            0       1
+movzbl (REG_64,REG_64,IMM),REG_32              0     143
+movzbl (REG_64),REG_32                         0      57
+movzbl IMM(REG_64,REG_64,IMM),REG_32           0     438
+movzbl IMM(REG_64),REG_32                      0    1281
+movzbl IMM(REG_64,REG_64,IMM),REG_64           0      26
+movzbl IMM(REG_64),REG_64                      0      18
+movb IMM,(REG_64,REG_64,IMM)                   0      27
+movb IMM,(REG_64)                              0       1
+movl IMM,IMM(REG_64)                           0    1506
+movlpd REG_XMM,(REG_64)                        0       2
+movlps REG_XMM,(REG_64)                        0       1
+movapd REG_XMM,REG_XMM                         1       0
+movslq REG_32,REG_64                           1       3
+movzwq REG_16,REG_64                           1       0
+movzbq IMM(REG_64,REG_64,IMM),REG_64           2       0
+movsd REG_XMM,IMM(REG_64)                      4       4
+movsd REG_XMM,IMM(REG_64,REG_64,IMM)           8       8
+movsd IMM(REG_64),REG_XMM                     16       6
+movsd IMM(REG_64,REG_64,IMM),REG_XMM          42      42
+movzbq (REG_64),REG_64                        58       0
+movslq IMM(REG_64),REG_64                     65      51
+movsd REG_XMM,(REG_64)                        87      79
+movsd (REG_64),REG_XMM                        93      73
+movzbq REG_8,REG_64                          319       0
+movabs IMM,REG_64                            579     661
+movzbq (REG_64,REG_64,IMM),REG_64            605       0
+movslq (REG_64,REG_64,IMM),REG_64            809       0
+movzbq IMM(REG_64),REG_64                   2768       0
+
+  LLIR + LLVM can emit more zero/sign extending variants, which can be more
+  compact. An interesting example:
+
+    ocamlopt generates:
+
+    mov    $ADDR,%rax
+    xor    %rdi,%rdi
+    mov    %edi,(%rax)
+
+    LLVM generates:
+
+    movl   $0x0,ADDR
+
+push REG_64                                  992    5083
+pop REG_64                                   992    6837
+
+  Instead of using add/sub to adjust the stack by 8 bytes, LLVM pushes/pops
+  an unused register. push/pop are 3 bytes shorter than add/sub.
+
+lea IMM(REG_64,REG_64,IMM),REG_32              0       9
+lea IMM(,REG_64,IMM),REG_32                    0       1
+lea (REG_64,REG_64,IMM),REG_32                 0       3
+lea (REG_64,REG_64,IMM),REG_64                11      43
+lea IMM(,REG_64,IMM),REG_64                  484     518
+lea IMM(REG_64,REG_64,IMM),REG_64           1069     891
+lea IMM(REG_64),REG_64                     17465   31405
+add IMM,REG_64                             21889   11602
+
+  LLIR+LLVM defaults to PIC at the moment, but sometimes it uses LEA instead of
+  ADD as well.
+
+xorps REG_XMM,REG_XMM                          0       9
+xorpd REG_XMM,REG_XMM                          7       1
+
+  xorps does the same thing as xorpd, butit is a byte shorter.
+
+shrq (REG_64)                                  0       1
+cltq                                           0       1
+neg REG_64                                     0      20
+negq IMM(REG_64)                               0       5
+not REG_64                                     0       5
+addq IMM,IMM(REG_64,REG_64,IMM)                0       1
+xor IMM(REG_64,REG_64,IMM),REG_32              0       1
+
+  OCaml does not seem to select these instructions at all.
+
+callq ADDR                                 41134   39276
+
+  Duplo does not use callq to implement Lsetuptrap.
+
+bswap REG_32                                   1       0
+bswap REG_64                                   2       0
+xchg REG_8,REG_8                               1       0
+
+  LLIR does not yet support bswap.
+
+divsd IMM(REG_64),REG_XMM                      0       1
+addsd IMM(REG_64),REG_XMM                      0       1
+mulsd IMM(REG_64),REG_XMM                      0       5
+add IMM(REG_64),REG_64                         0     110
+add REG_64,IMM(REG_64)                         0       3
+addq IMM,IMM(REG_64)                           0      70
+xor IMM(REG_64),REG_64                         0      27
+xor IMM(REG_64),REG_32                         0       2
+or IMM(REG_64),REG_32                          0       2
+or IMM(REG_64),REG_64                          0       6
+and IMM(REG_64),REG_32                         0       2
+and IMM(REG_64),REG_64                         0      54
+sub IMM(REG_64),REG_32                         0       1
+sub IMM(REG_64),REG_64                         0     119
+sub REG_64,IMM(REG_64)                         0       2
+imul IMM(REG_64),REG_64                        0       6
+imul IMM,IMM(REG_64),REG_64                    0       4
+andpd IMM(REG_64),REG_XMM                      2       1
+xorpd IMM(REG_64),REG_XMM                      2       1
+andps IMM(REG_64),REG_XMM                      0       1
+xorps IMM(REG_64),REG_XMM                      0       1
+
+  Addresses/Spill slot references are better folded into instructions.
+
+ucomisd (REG_64),REG_XMM                       0      21
+cvttsd2si (REG_64),REG_64                      0       4
+subsd REG_XMM,REG_XMM                          1       1
+divsd REG_XMM,REG_XMM                          2       2
+addsd REG_XMM,REG_XMM                          3       3
+divsd (REG_64),REG_XMM                         4       3
+mulsd REG_XMM,REG_XMM                          4       1
+mulsd (REG_64),REG_XMM                         5       3
+subsd (REG_64),REG_XMM                         5       5
+cvttsd2si REG_XMM,REG_64                       6       2
+addsd (REG_64),REG_XMM                         6       5
+comisd REG_XMM,REG_XMM                         7       0
+cvtsi2sd REG_64,REG_XMM                       10      10
+ucomisd REG_XMM,REG_XMM                       23       9
+add (REG_64),REG_64                            0      73
+add REG_64,REG_32                              0       2
+add REG_32,REG_32                              0       6
+add REG_64,REG_64                            926     359
+addq IMM,(REG_64)                            256     337
+xor (REG_64),REG_64                            0       1
+xor IMM,REG_64                                 5       1
+or (REG_64),REG_64                             0       1
+or IMM,REG_32                                  0      10
+or REG_64,REG_64                              19       9
+or IMM,REG_64                                573     555
+and (REG_64),REG_64                            0      42
+and IMM,REG_32                                 0      16
+and REG_32,REG_32                              0       1
+and IMM,REG_64                                66      58
+and REG_64,REG_64                            173     196
+sub (REG_64),REG_64                            0      20
+sub REG_64,(REG_64)                            0       4
+sub REG_32,REG_64                              0       1
+sub REG_32,REG_32                              0       3
+sub REG_64,REG_64                            927     685
+sub IMM,REG_64                              6979    3928
+imul (REG_64),REG_64                           0       1
+imul REG_64,REG_64                            23      16
+imul REG_64                                   23      22
+imul IMM,REG_64,REG_64                        27       8
+idiv REG_64                                   23      23
+shl REG_8,REG_64                              21      21
+shl IMM,REG_64                                30     124
+shl REG_64                                   183       0
+shlq IMM,(REG_64)                              0       1
+shr REG_32                                     0      16
+shr IMM,REG_32                                 0       8
+shr REG_64                                     2     102
+shr REG_8,REG_64                               8       9
+shr IMM,REG_64                              1471    1460
+sar REG_8,REG_64                              10       9
+cqto                                          23      23
+sar IMM,REG_64                                44      36
+dec REG_64                                    68      96
+inc REG_64                                   299     182
+sar REG_64                                   771     512
+
+  Hard to decide what is better in this group.
+
+ud2                                            0    2552
+
+  LLIR emits a trap after functions which do not return.
+
+ucomisd (REG_64),REG_XMM                       0      21
+divsd IMM(REG_64),REG_XMM                      0       1
+addsd IMM(REG_64),REG_XMM                      0       1
+cvttsd2si (REG_64),REG_64                      0       4
+mulsd IMM(REG_64),REG_XMM                      0       5
+subsd REG_XMM,REG_XMM                          1       1
+divsd REG_XMM,REG_XMM                          2       2
+addsd REG_XMM,REG_XMM                          3       3
+divsd (REG_64),REG_XMM                         4       3
+mulsd REG_XMM,REG_XMM                          4       1
+mulsd (REG_64),REG_XMM                         5       3
+subsd (REG_64),REG_XMM                         5       5
+cvttsd2si REG_XMM,REG_64                       6       2
+addsd (REG_64),REG_XMM                         6       5
+comisd REG_XMM,REG_XMM                         7       0
+cvtsi2sd REG_64,REG_XMM                       10      10
+ucomisd REG_XMM,REG_XMM                       23       9
+
+  Roughly equal.
+
+setge REG_8                                   10       6
+setle REG_8                                   11      18
+setl REG_8                                    39      28
+setne REG_8                                   44      44
+setg REG_8                                    47      51
+sete REG_8                                   168     155
+jmpq ADDR                                   9949    9520
+jns ADDR                                       0       1
+js ADDR                                        0       4
+jnp ADDR                                       0      12
+jae ADDR                                       1      33
+jp ADDR                                       23      11
+jb ADDR                                       66     155
+ja ADDR                                       78     121
+jle ADDR                                     265     661
+jg ADDR                                      519     760
+jge ADDR                                     612     203
+jl ADDR                                      860     654
+jbe ADDR                                     918     627
+jmp ADDR                                    4385    6523
+jne ADDR                                    6100    7152
+je ADDR                                     9469    8424
+
+  Roughly equal, as expected.
+
+TOTAL:                                    466562  428120
