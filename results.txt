@@ -1,3 +1,7 @@
+This document counts the instruction kinds which are present in the set of
+functions included in both the native and Duplo-optimised versions of the
+ocamlopt binary.
+
 INSTRUCTION                                OCAML    LLIR
 
 cmp IMM,REG_8                                  0      28
@@ -187,6 +191,7 @@ andps IMM(REG_64),REG_XMM                      0       1
 xorps IMM(REG_64),REG_XMM                      0       1
 
   Addresses/Spill slot references are better folded into instructions.
+  In general, the register allocator of LLVM generates less spills and reloads.
 
 ucomisd (REG_64),REG_XMM                       0      21
 cvttsd2si (REG_64),REG_64                      0       4
